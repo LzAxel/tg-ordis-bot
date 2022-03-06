@@ -1,3 +1,4 @@
+import logging
 import random
 import csv
 import json
@@ -23,23 +24,23 @@ async def check_new_alerts():
     with open('chats.txt', 'r', encoding='UTF-8') as file:
         chats = file.readlines()
     while True:
-        print('Проверка новых Сигналов Тревоги... - ', time.strftime("%d/%m/%Y %H:%M:%S"))
+        logging.info("Checking for new lotus gifts")
         parse.get_alerts()
         alerts = parse.read_cached_json('alerts')
         if not saved_alerts:
             saved_alerts = alerts
-            print('Первый запуск - ', time.strftime("%d/%m/%Y %H:%M:%S"))
+            logging.info("First lotus gift checking")
         elif all(alert in saved_alerts for alert in alerts):
-            print("Новых тревог не найдено - ", time.strftime("%d/%m/%Y %H:%M:%S"))
+            logging.info("New lotus gifts not found")
         else:
-            print("Обнаружены новые тревоги - ", time.strftime("%d/%m/%Y %H:%M:%S"))
+            logging.info("Founded new lotus gifts")
             for chat in chats:
                 message = "❕*Новые Сигналы Тревоги*\n\n"
                 for alert in alerts:
                     if alert not in saved_alerts:
                         message += f"*Тип:* {alert['description']}\n*Миссия*: {alert['mission']}\n*Фракция*: {alert['faction']}\n"
                         message += f"*Награда*: {alert['reward']}\n"
-                        print('отправка тревоги к ', chat)
+                        logging.info('Sending lotus gifts message to ', chat)
                         await bot.send_message(chat, message, parse_mode='Markdown',
                                                reply_markup=kb.mainMenu)
             saved_alerts = alerts
@@ -52,7 +53,7 @@ async def check_new_articles():
         chats = file.readlines()
 
     while True:
-        print('Проверка новых записей... - ', time.strftime("%d/%m/%Y %H:%M:%S"))
+        logging.info("Checking for website news")
         await parse.get_articles()
         with open(Path("src", "articles.json"), 'r', encoding='UTF-8') as file:
             got_articles = json.load(file)
@@ -61,20 +62,20 @@ async def check_new_articles():
 
         if not saved_articles:
             saved_articles = got_articles
-            print('Первый запуск - ', time.strftime("%d/%m/%Y %H:%M:%S"))
+            logging.info("First website news checking")
         elif all(get in saved_articles_names for get in got_articles_names):
-            print("Новых записей не найдено - ", time.strftime("%d/%m/%Y %H:%M:%S"))
+            logging.info("Website news not found")
         else:
-            print("Обнаружены новые записи - ", time.strftime("%d/%m/%Y %H:%M:%S"))
+            logging.info("Founded website news")
             new_articles = [get for get in got_articles if get not in saved_articles]
             saved_articles = got_articles
             for chat in chats:
                 for article in new_articles:
                     try:
                         await bot.send_photo(chat, article['Photo'])
-                    except:
-                        print('Отправка фото не удалась')
-                    link = hlink('Подробнее', article['Read_More'])
+                    except Exception as ex:
+                        logging.error("Photo send error - ", ex)
+                    link = hlink('Read More', article['Read_More'])
                     message = f"✨<b>{article['Title']}</b>✨\n\n📃 {article['Description']}\n\n📅 {article['Date']}\t{link}"
                     await bot.send_message(chat, message, parse_mode="HTML", disable_web_page_preview=True)
             print(new_articles)

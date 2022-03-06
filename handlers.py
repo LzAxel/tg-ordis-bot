@@ -3,9 +3,10 @@ from aiogram import types, filters, Dispatcher
 from aiogram.utils.markdown import hlink, bold
 import json
 from pathlib import Path
-
+import logging
+ 
 import parse
-from bot import dp, bot
+from bot import bot
 import keyboards as kb
 import config
 
@@ -21,18 +22,19 @@ async def process_start_command(msg: types.Message):
                     reply_markup=kb.mainMenu)
 
     chat_id = str(msg.chat.id)
-    with open('chats.txt', 'r', encoding='UTF-8') as file:
+    with open('chats.txt', 'r', encoding='UTF-8') as file:  
         chat_id_list = file.readline()
         if chat_id not in chat_id_list:
             with open('chats.txt', 'a', encoding='UTF-8') as write_file:
                 write_file.write(chat_id)
                 write_file.write('\n')
+                logging.info(chat_id, " a new user.")
         else:
-            print('Этот айди уже есть в базе')
+            logging.info(chat_id, " already in database.")
 
 
 async def process_help_command(msg: types.Message):
-    await msg.reply("⁉ Помощь по командам бота \n\n"
+    await msg.reply("⁉ Commands help \n\n"
                     "- /latest - посмотреть последнюю новость с оф. сайта \n"
                     "- 🌗Циклы - узнать статус всех открытых миров \n"
                     "- 🛡Вылазка - узнать данные вылазки, включая миссии и оставшееся время \n\n"
@@ -55,8 +57,8 @@ async def send_latest_article(msg: types.Message):
     try:
         await bot.send_photo(msg.from_user.id, article['Photo'])
 
-    except:
-        print('Отправка фото не удалась')
+    except Exception as ex:
+        logging.error("Can't send article's photo.", ex)
     link = hlink('Read More', article['Read_More'])
     message = f"✨ <b>{article['Title']}</b> ✨\n\n📃 {article['Description']}\n\n📅 {article['Date']}\t{link}"
     await bot.send_message(msg.from_user.id, message, parse_mode="HTML", disable_web_page_preview=True,
@@ -64,6 +66,7 @@ async def send_latest_article(msg: types.Message):
 
 
 async def send_articles(msg: types.Message):
+    logging.info(f"Sending articles to {msg.from_user.id}")
     await parse.get_articles()
     with open(Path("src", "articles.json"), 'r', encoding='UTF-8') as file:
         articles = json.load(file)
@@ -72,25 +75,26 @@ async def send_articles(msg: types.Message):
         try:
             await bot.send_photo(msg.from_user.id, article['Photo'])
 
-        except:
-            print('Отправка фото не удалась')
+        except Exception as ex:
+            logging.error("Photo send error - ", ex)
         message = f"✨ <b>{article['Title']}</b> ✨\n\n📃 {article['Description']}\n\n📅 {article['Read_More']}\n{article['Date']}"
         await bot.send_message(msg.from_user.id, message, parse_mode="HTML", disable_web_page_preview=True,
                                reply_markup=kb.mainMenu)
 
 
 async def send_world_cycles(msg: types.Message):
-    print('Вывод циклов')
+    logging.info(f"Sending world cycles to {msg.from_user.id}")
     message = ""
     cycle_list = await parse.get_cycles()
     
     for cycle in cycle_list:
         message += f"{cycle.name}\n{bold('Status:')} {cycle.state}\n{bold('Time left:')} {cycle.eta}\n\n"
+    
     await bot.send_message(msg.from_user.id, message, parse_mode='Markdown', reply_markup=kb.mainMenu)
 
 
 async def send_sortie_info(msg: types.Message):
-    print('Вывод вылазки')
+    logging.info(f"Sending sortie to {msg.from_user.id}")
     sortie = await parse.get_sortie()
     message = f"🎭 *Faction:* {sortie.faction}\n\n" \
     f"☠️ *Boss:* {sortie.boss}\n\n" \
@@ -104,7 +108,7 @@ async def send_sortie_info(msg: types.Message):
 
 
 async def send_invasions_info(msg: types.Message):
-    print('Вывод вторжений')
+    logging.info(f"Sending invasions to {msg.from_user.id}")
     invasions = parse.get_invasions()
     message = "*⚔️ Invasions*\n\n"
     for invasion in invasions:
@@ -116,7 +120,7 @@ async def send_invasions_info(msg: types.Message):
 
 
 async def send_relic_info(msg: types.Message):
-    print('Получение релика или дропа вызвано')
+    logging.info(f"Sending relic drop to {msg.from_user.id}")
     command = msg.text.lower()
     split_command = command.split(' ')
     if split_command[0] in config.RELIC_COMMANDS:

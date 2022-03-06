@@ -1,4 +1,5 @@
 import json
+import logging
 from bs4 import BeautifulSoup
 import requests
 import asyncio
@@ -66,7 +67,7 @@ class WorldState(BaseModel):
 
 
 async def get_articles():
-    print('Start parsing - ', time.strftime("%d/%m/%Y %H:%M:%S"))
+    logging.info("Parsing articles")
     url = config.OFFICIAL_URL
     headers = config.HEADERS
     articles_list = []
@@ -136,7 +137,7 @@ async def get_cycles() -> list:
     cycle_list = []
     
     for value in config.WORLD_STATE_URLS.values():
-        print(value)
+        logging.info(f"Parsing {value[0]} cycle")
         name = value[0]
         data = requests.get(value[1], config.HEADERS).text
         
@@ -148,6 +149,7 @@ async def get_cycles() -> list:
     
 
 async def get_sortie() -> Sortie:
+    logging.info(f"Parsing Sortie")
     data = requests.get('https://api.warframestat.us/pc/sortie?language=eu', config.HEADERS).text
     sortie = Sortie.parse_raw(data)
     
@@ -155,6 +157,7 @@ async def get_sortie() -> Sortie:
 
 
 def get_alerts():
+    logging.info(f"Parsing Alerts")
     raw_alerts_list = requests.get('https://api.warframestat.us/pc/alerts?language=en').json()
     alerts_list = []
     for alert in raw_alerts_list:
@@ -175,6 +178,7 @@ def get_alerts():
 
 
 def get_invasions():
+    logging.info(f"Parsing Invasions")
     raw_data = requests.get('https://api.warframestat.us/pc/invasions?language=eu').text
     print(raw_data)
     data = parse_raw_as(list[Invasion], raw_data)
@@ -202,6 +206,7 @@ async def get_relic_data(relic: str) -> str:
     relic = [i.capitalize() for i in relic[:2]]
     link = f'https://drops.warframestat.us/data/relics/{relic[0]}/{relic[1]}.json'
     try:
+        logging.info(f"Parsing Relic Data")
         response = requests.get(link).json()
         name = ' '.join(relic)
         message += f"🎱 *Relic:* {name} ({translate_table[rarity]})\n\n"
@@ -226,8 +231,8 @@ async def get_relic_data(relic: str) -> str:
 async def get_relics_with_current_item(request: str) -> str:
     url = 'https://drops.warframestat.us/data/relics.json'
     utils.make_reversed_translation_table()
-    request = request
     message = ''
+    logging.info(f"Parsing Relic with {request}")
     data = requests.get(url, headers=config.HEADERS).json()
     relics = []
     request_list = [i.lower() for i in request.split(' ')]
@@ -278,7 +283,6 @@ def cache_json(json_data, name):
 def read_cached_json(name):
     current_time = time.strftime(f"%d-%m-%Y_%H-{'00' if time.strftime('%M') < '30' else '30'}")
     file_src = Path("src", f"{name}_{current_time}.json")
-    print(file_src.exists(), file_src)
     if not file_src.exists():
         get_invasions()
         get_alerts()

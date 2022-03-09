@@ -1,11 +1,12 @@
 import logging
 from random import randint
 import csv
+import aiogram
 
 from bs4 import BeautifulSoup
 import requests
 
-from bot import bot
+from bot import bot, db
 from aiogram.utils.markdown import hlink
 import asyncio
 from pathlib import Path
@@ -13,8 +14,6 @@ from pathlib import Path
 import config
 import parse
 import keyboards as kb
-
-
 
 async def check_new_alerts():
     saved_alerts = []
@@ -44,22 +43,26 @@ async def check_new_alerts():
         await asyncio.sleep(randint(100, 200))
 
 
-async def check_new_articles():
-    with open(Path("chats.txt"), 'r', encoding='UTF-8') as file:
-        chats = file.readlines()
+async def send_articles():
+    chat_list = db.get_users()
 
     while True:
         await asyncio.sleep(config.NEWS_CHECK_RATE)
         new_articles = await parse.get_new_articles() 
         if not new_articles: continue
         
-        for chat in chats:
+        for chat in chat_list:
+            chat = chat[0]
             for article in new_articles:
                 logging.info(f"Sending articles.. | User ID: {chat} Title: {article.title}")
                 try:
                     await bot.send_photo(chat, article.photo)
-                except Exception as ex:
-                    logging.error("Photo send error - ", ex)
+
+                except aiogram.utils.exceptions.ChatNotFound:
+                    logging.error(f"Chat {chat} Not Found")
+                    db.remove_user(chat)
+                    continue
+                    
                 link = hlink(article.title, article.url)
                 message = f"✨<b>{link}</b>✨\n\n📃 {article.description}\n\n📅 {article.date}"
                 await bot.send_message(chat, message, parse_mode="HTML", disable_web_page_preview=True)

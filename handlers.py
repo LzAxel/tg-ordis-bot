@@ -6,31 +6,21 @@ from pathlib import Path
 import logging
  
 import parse
-from bot import bot
+from bot import bot, db
 import keyboards as kb
 import config
 
 
 async def process_start_command(msg: types.Message):
-    await msg.reply("🤖 Привет, Я - Ордис, бот - информатор ивентов Warframe'a \n\n"
-                    "🔔 Вот список моих возможностей: \n\n"
-                    " - Я буду автоматически присылать новости с оф. сайта \n"
-                    " - Можно узнать дроп с любой реликвии \n"
-                    " - Откуда выпадают конкретные прайм части \n"
-                    " - Посмотреть текущую вылазку и статусы открытых миров \n\n"
-                    "⁉ Все подробности по команде /help", parse_mode="Markdown",
+    await msg.reply("🤖 Hi, I'm - Ordis, Warframe's events informator bot. \n\n"
+                    "🔔 There are my opportunities: \n\n"
+                    " - I'll automatically send news from official site.\n"
+                    " - You can know drops from any relic. \n"
+                    " - You can know relics with current items. \n"
+                    " - Check current world cycles, sortie, invasions. \n\n", parse_mode="Markdown",
                     reply_markup=kb.mainMenu)
 
-    chat_id = str(msg.chat.id)
-    with open('chats.txt', 'r', encoding='UTF-8') as file:  
-        chat_id_list = file.readline()
-        if chat_id not in chat_id_list:
-            with open('chats.txt', 'a', encoding='UTF-8') as write_file:
-                write_file.write(chat_id)
-                write_file.write('\n')
-                logging.info(chat_id, " a new user.")
-        else:
-            logging.info(chat_id, " already in database.")
+    db.add_user(msg.from_user.id, msg.from_user.full_name)
 
 
 async def process_help_command(msg: types.Message):
@@ -63,23 +53,6 @@ async def send_latest_article(msg: types.Message):
     message = f"✨ <b>{article['Title']}</b> ✨\n\n📃 {article['Description']}\n\n📅 {article['Date']}\t{link}"
     await bot.send_message(msg.from_user.id, message, parse_mode="HTML", disable_web_page_preview=True,
                            reply_markup=kb.mainMenu)
-
-
-async def send_articles(msg: types.Message):
-    logging.info(f"Sending articles to {msg.from_user.id}")
-    await parse.get_articles()
-    with open(Path("src", "articles.json"), 'r', encoding='UTF-8') as file:
-        articles = json.load(file)
-
-    for article in articles:
-        try:
-            await bot.send_photo(msg.from_user.id, article['Photo'])
-
-        except Exception as ex:
-            logging.error("Photo send error - ", ex)
-        message = f"✨ <b>{article['Title']}</b> ✨\n\n📃 {article['Description']}\n\n📅 {article['Read_More']}\n{article['Date']}"
-        await bot.send_message(msg.from_user.id, message, parse_mode="HTML", disable_web_page_preview=True,
-                               reply_markup=kb.mainMenu)
 
 
 async def send_world_cycles(msg: types.Message):
@@ -146,8 +119,6 @@ async def send_relic_info(msg: types.Message):
 def register_handlers(dp: Dispatcher): 
     dp.register_message_handler(process_start_command, commands=['start'])
     dp.register_message_handler(process_help_command, commands=['help'])
-    dp.register_message_handler(send_latest_article, commands=['latest'])
-    dp.register_message_handler(send_articles, commands=['list'])
     dp.register_message_handler(send_world_cycles, filters.Text("🌗 World Cycles"))
     dp.register_message_handler(send_sortie_info, filters.Text("🛡 Sortie"))
     dp.register_message_handler(send_invasions_info, filters.Text("⚔️ Invasions"))

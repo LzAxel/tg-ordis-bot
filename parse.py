@@ -1,14 +1,15 @@
+import time
 import json
 import logging
 from bs4 import BeautifulSoup
 import requests
-import asyncio
 import random
 from pathlib import Path
 import utils
 import config
 import time
-from pydantic import BaseModel, Field, validator, parse_raw_as
+from pydantic import BaseModel, Field, JsonError, parse_file_as, validator, parse_raw_as
+import pydantic
 
 
 class SortieMission(BaseModel):
@@ -66,13 +67,25 @@ class WorldState(BaseModel):
         return value.capitalize()
 
 
-async def get_articles():
+class Article(BaseModel):
+    title: str
+    description: str
+    date: str
+    photo: str
+    url: str
+
+
+async def parse_articles():
     logging.info("Parsing articles")
     url = config.OFFICIAL_URL
     headers = config.HEADERS
     articles_list = []
-    response = requests.get(url, headers).text
-    soup = BeautifulSoup(response, 'lxml')
+
+    session = requests.Session()
+    session.headers.update(headers)
+    session.get(url, headers=headers)
+    request = session.get(url, headers=headers)
+    soup = BeautifulSoup(request.text, 'lxml')
 
     try:
         parse_articles_list = soup.find(id='newsSection').find_all(class_='post')
@@ -81,47 +94,44 @@ async def get_articles():
             title = parse_article.find(class_='title').text.strip()
             description = parse_article.find(class_='description').text.strip()
             date = parse_article.find(class_='date').text.strip()
-            read_more = parse_article.find(class_='read-more').get('href')
+            read_more = parse_article.get("data-link")
             photo = 'https:' + parse_article.find(class_='image').find('img').get('src')
-            articles_list.append({
-                'Title': title,
-                'Description': description,
-                'Date': date,
-                'Read_More': read_more,
-                'Photo': photo
-            })
+            articles_list.append(Article(title=title, description=description, 
+                                         date=date, photo=photo, url=read_more))
 
     except Exception as ex:
-        print(f'Ошибка парсинга - {ex}')
-    with open(Path("src", "articles.json"), 'w+', encoding='UTF-8') as file:
-        json.dump(articles_list, file, ensure_ascii=False, indent=4)
+        logging.exception(ex)
+        logging.error('Failed to parse. Check logs please.')
+        error_time = time.strftime('%d-%m-%Y_%S-%M-%H', time.gmtime())
+        with open(Path("logs", f"articles-{error_time}"), 'w+', encoding='UTF-8') as file:
+            file.write(request.text)
 
+    return articles_list
 
 async def get_new_articles():
-    saved_articles = []
-    with open("chats.txt", 'r', encoding='UTF-8') as file:
-        chats = file.readlines()
-
-    while True:
-        await get_articles()
+    articles = await parse_articles()
+    try:
+        if not Path("src", "articles.json").exists(): Path("src", "articles.json").touch()
 
         with open(Path("src", "articles.json"), 'r', encoding='UTF-8') as file:
-            got_articles = json.load(file)
-        saved_articles_names = [i['Title'] for i in saved_articles]
-        got_articles_names = [i['Title'] for i in got_articles]
+            data = file.read()
+            cached_articles = parse_raw_as(list[Article], data)
 
-        if saved_articles:
-            saved_articles = got_articles
-            print('Первый запуск')
-        elif all(get in saved_articles_names for get in got_articles_names):
-            print("Новых записей не найдено")
+        if all(a in cached_articles for a in articles):
+            logging.info("No articles was founded!")
+
         else:
-            print("Обнаружены новые записи")
-            new_articles = [get for get in got_articles if get not in saved_articles]
-            saved_articles = got_articles
-            print(new_articles)
+            new_articles = [a for a in articles if a not in cached_articles]
+            
             return new_articles
-        await asyncio.sleep(random.randrange(60, 90))
+
+    except json.JSONDecodeError:
+        logging.info("Creating first articles.json dump")
+
+    finally:
+        with open(Path("src", "articles.json"), 'w', encoding='UTF-8') as file:
+            json.dump([i.dict() for i in articles], file, ensure_ascii=False, indent=4)
+    
 
 
 async def get_relic_names_list() -> list:
@@ -144,6 +154,8 @@ async def get_cycles() -> list:
         cycle = WorldState.parse_raw(data)
         cycle.name = name
         cycle_list.append(cycle)
+    
+    logging.debug(cycle_list)    
         
     return cycle_list
     
@@ -152,6 +164,7 @@ async def get_sortie() -> Sortie:
     logging.info(f"Parsing Sortie")
     data = requests.get('https://api.warframestat.us/pc/sortie?language=eu', config.HEADERS).text
     sortie = Sortie.parse_raw(data)
+    logging.debug(sortie)
     
     return sortie
 
@@ -174,17 +187,17 @@ def get_alerts():
                 'faction': mission_info['faction'],
                 'reward': reward_name
             })
-    cache_json(alerts_list, 'alerts')
-
+    logging.debug(alerts_list)
+    # cache_json(alerts_list, 'alerts')
 
 def get_invasions():
     logging.info(f"Parsing Invasions")
     raw_data = requests.get('https://api.warframestat.us/pc/invasions?language=eu').text
-    print(raw_data)
     data = parse_raw_as(list[Invasion], raw_data)
+    logging.debug(data)
     #Select only uncompleted invasions
     data = [i for i in data if i.completed == False and '-' not in i.eta]
-    print(data)
+    
     return data
 
 

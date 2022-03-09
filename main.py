@@ -1,14 +1,11 @@
 import logging
-import random
+from random import randint
 import csv
-import json
-import time
 
 from bs4 import BeautifulSoup
 import requests
 
-
-from bot import dp, bot
+from bot import bot
 from aiogram.utils.markdown import hlink
 import asyncio
 from pathlib import Path
@@ -21,7 +18,7 @@ import keyboards as kb
 
 async def check_new_alerts():
     saved_alerts = []
-    with open('chats.txt', 'r', encoding='UTF-8') as file:
+    with open(Path("chats.txt"), 'r', encoding='UTF-8') as file:
         chats = file.readlines()
     while True:
         logging.info("Checking for new lotus gifts")
@@ -44,42 +41,28 @@ async def check_new_alerts():
                         await bot.send_message(chat, message, parse_mode='Markdown',
                                                reply_markup=kb.mainMenu)
             saved_alerts = alerts
-        await asyncio.sleep(random.randrange(100, 200))
+        await asyncio.sleep(randint(100, 200))
 
 
 async def check_new_articles():
-    saved_articles = []
-    with open('\chats.txt', 'r', encoding='UTF-8') as file:
+    with open(Path("chats.txt"), 'r', encoding='UTF-8') as file:
         chats = file.readlines()
 
     while True:
-        logging.info("Checking for website news")
-        await parse.get_articles()
-        with open(Path("src", "articles.json"), 'r', encoding='UTF-8') as file:
-            got_articles = json.load(file)
-        saved_articles_names = [i['Title'] for i in saved_articles]
-        got_articles_names = [i['Title'] for i in got_articles]
-
-        if not saved_articles:
-            saved_articles = got_articles
-            logging.info("First website news checking")
-        elif all(get in saved_articles_names for get in got_articles_names):
-            logging.info("Website news not found")
-        else:
-            logging.info("Founded website news")
-            new_articles = [get for get in got_articles if get not in saved_articles]
-            saved_articles = got_articles
-            for chat in chats:
-                for article in new_articles:
-                    try:
-                        await bot.send_photo(chat, article['Photo'])
-                    except Exception as ex:
-                        logging.error("Photo send error - ", ex)
-                    link = hlink('Read More', article['Read_More'])
-                    message = f"✨<b>{article['Title']}</b>✨\n\n📃 {article['Description']}\n\n📅 {article['Date']}\t{link}"
-                    await bot.send_message(chat, message, parse_mode="HTML", disable_web_page_preview=True)
-            print(new_articles)
-        await asyncio.sleep(random.randrange(60, 90))
+        await asyncio.sleep(config.NEWS_CHECK_RATE)
+        new_articles = await parse.get_new_articles() 
+        if not new_articles: continue
+        
+        for chat in chats:
+            for article in new_articles:
+                logging.info(f"Sending articles.. | User ID: {chat} Title: {article.title}")
+                try:
+                    await bot.send_photo(chat, article.photo)
+                except Exception as ex:
+                    logging.error("Photo send error - ", ex)
+                link = hlink(article.title, article.url)
+                message = f"✨<b>{link}</b>✨\n\n📃 {article.description}\n\n📅 {article.date}"
+                await bot.send_message(chat, message, parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def get_relic_items():

@@ -1,5 +1,6 @@
-/*
-!.gitignore
-!*.py
-!requirements.txt
-/test.py
+__pycache__
+src
+logs
+venv
+.env
+chats.txt

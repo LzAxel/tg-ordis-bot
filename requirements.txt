@@ -4,3 +4,4 @@ pydantic==1.9.0
 requests==2.27.1
 lxml==4.8.0
 python-dotenv==0.19.2
+coloredlogs==15.0.1

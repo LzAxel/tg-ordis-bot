@@ -14,12 +14,3 @@ HEADERS = {
 }
 
 OFFICIAL_URL = 'https://www.warframe.com/'
-
-WORLD_STATE_URLS = {
-    "cambion": ("🔥 Cambion Drift", "https://api.warframestat.us/pc/cambionCycle"),
-    "cetus": ("✨ Cetus", "https://api.warframestat.us/pc/cetusCycle"),
-    "earth": ("🌎 Earth", "https://api.warframestat.us/pc/earthCycle"),
-    "vallis": ("🌪 Orb Vallis", "https://api.warframestat.us/pc/vallisCycle")
-}
-
-NEWS_CHECK_RATE = 90 #In seconds

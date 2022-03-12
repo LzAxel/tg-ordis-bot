@@ -1,3 +1,6 @@
+import asyncio
+from email import header
+from pprint import pprint
 import time
 import json
 import logging
@@ -10,7 +13,8 @@ import config
 import time
 from pydantic import BaseModel, Field, JsonError, parse_file_as, validator, parse_raw_as
 import pydantic
-
+import re
+from typing import Optional
 
 class SortieMission(BaseModel):
     mission_type: str = Field(alias="missionType")
@@ -38,8 +42,22 @@ class Reward(BaseModel):
             return "None"
         else:
             return name
-
         
+
+class AlertMission(BaseModel):
+    location: str = Field(alias="node")
+    description: str
+    type: str
+    faction: str
+    reward: Reward
+
+
+class Alert(BaseModel):
+    mission: AlertMission
+    active: bool
+    eta: str
+
+
 class Faction(BaseModel):
     faction: str
     reward: Reward
@@ -54,18 +72,31 @@ class Invasion(BaseModel):
 
 
 class WorldState(BaseModel):
-    name: str = None
-    state: str = None or Field(alias="active")
+    name: str = Field(alias="id")
+    state: Optional[str] = Field(alias="active")
     eta: str = Field(alias="timeLeft")
 
     class Config:
         allow_population_by_field_name = True
-    
+
     @validator("state")
     def capitalize_state(cls, value):
         
         return value.capitalize()
 
+    @validator("name", always=True)
+    def set_name(cls, value):
+        template = {
+            "earth": "🌎 Earth",
+            "cetus": "✨ Cetus",
+            "cambion": "🔥 Cambion Drift",
+            "vallis": "🌪 Orb Vallis"
+        }
+        value = value.split("Cycle")[0]
+        if value in template.keys():
+            return template[value]
+        else:
+            return value
 
 class Article(BaseModel):
     title: str
@@ -74,6 +105,36 @@ class Article(BaseModel):
     photo: str
     url: str
 
+
+class APIDump(BaseModel):
+    timestamp: str
+    sortie: Sortie
+    invasions: list[Invasion]
+    alerts: list[Alert]
+    cetusCycle: Optional[WorldState]
+    vallisCycle: Optional[WorldState]
+    cambionCycle: Optional[WorldState]
+    earthCycle: Optional[WorldState]
+    cycles: Optional[list[WorldState]]
+
+    @validator("invasions")
+    def validate_invasion(cls, value):
+        value = [i for i in value if not i.completed]
+
+        return value
+
+
+    @validator("cycles", always=True)
+    def validate_cycles(cls, value, values):
+        if value:
+            return value
+        else:
+            value = []
+            cycle_list = [re.findall("\D*Cycle", i) for i in values.keys()]
+            cycle_list = [i[0] for i in cycle_list if i]
+            for i in cycle_list:
+                value.append(values[i])
+            return value
 
 async def parse_articles():
     logging.info("Parsing articles")
@@ -108,6 +169,25 @@ async def parse_articles():
 
     return articles_list
 
+
+async def update_api_dump():
+    logging.info("Updating API Dump")
+    response = requests.get("https://api.warframestat.us/pc").text
+    data = APIDump.parse_raw(response)
+    cycle_list = [re.findall("\D*Cycle", i) for i in data.dict().keys()]
+    cycle_list = {i[0] for i in cycle_list if i}
+    export = data.dict(exclude=cycle_list, by_alias=True)
+    with open(Path("src", "api_dump.json"), "w", encoding="UTF-8") as file:
+        json.dump(export, file, indent=4, ensure_ascii=False)
+    logging.info("Updating API Dump Complete!")
+        
+
+async def read_api_dump():
+    dump = APIDump.parse_file(Path("src", "api_dump.json"))
+    
+    return dump
+
+    
 async def get_new_articles():
     articles = await parse_articles()
     try:
@@ -132,7 +212,6 @@ async def get_new_articles():
         with open(Path("src", "articles.json"), 'w', encoding='UTF-8') as file:
             json.dump([i.dict() for i in articles], file, ensure_ascii=False, indent=4)
     
-
 
 async def get_relic_names_list() -> list:
     relic_names_list = []
@@ -188,9 +267,9 @@ def get_alerts():
                 'reward': reward_name
             })
     logging.debug(alerts_list)
-    # cache_json(alerts_list, 'alerts')
 
-def get_invasions():
+
+def get_invasions() -> list:
     logging.info(f"Parsing Invasions")
     raw_data = requests.get('https://api.warframestat.us/pc/invasions?language=eu').text
     data = parse_raw_as(list[Invasion], raw_data)
@@ -284,20 +363,6 @@ async def get_relics_with_current_item(request: str) -> str:
     return message
 
 
-def cache_json(json_data, name):
-    current_time = time.strftime(f"%d-%m-%Y_%H-{'00' if time.strftime('%M') < '30' else '30'}")
-    file_src = Path("src", f"{name}_{current_time}.json")
-    del_files_list = [file.unlink(missing_ok=True) for file in Path("src").glob(f'{name}*.json') if file != file_src]
-    if not file_src.exists():
-        with open(Path("src", f"{name}_{current_time}.json"), 'w', encoding='UTF-8') as file:
-            json.dump(json_data, file, ensure_ascii=False, indent=4)
-
-
-def read_cached_json(name):
-    current_time = time.strftime(f"%d-%m-%Y_%H-{'00' if time.strftime('%M') < '30' else '30'}")
-    file_src = Path("src", f"{name}_{current_time}.json")
-    if not file_src.exists():
-        get_invasions()
-        get_alerts()
-    with open(Path("src", f"{name}_{current_time}.json"), 'r', encoding='UTF-8') as file:
-        return json.load(file)
+if __name__ == "__main__":
+    asyncio.run(update_api_dump())
+    # print(asyncio.run((read_api_dump("alerts"))))

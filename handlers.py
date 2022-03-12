@@ -40,27 +40,12 @@ async def process_help_command(msg: types.Message):
                     , parse_mode="Markdown", reply_markup=kb.mainMenu)
 
 
-async def send_latest_article(msg: types.Message):
-    await parse.get_articles()
-    with open(Path("src", "articles.json"), 'r', encoding='UTF-8') as file:
-        article = json.load(file)[0]
-    try:
-        await bot.send_photo(msg.from_user.id, article['Photo'])
-
-    except Exception as ex:
-        logging.error("Can't send article's photo.", ex)
-    link = hlink('Read More', article['Read_More'])
-    message = f"✨ <b>{article['Title']}</b> ✨\n\n📃 {article['Description']}\n\n📅 {article['Date']}\t{link}"
-    await bot.send_message(msg.from_user.id, message, parse_mode="HTML", disable_web_page_preview=True,
-                           reply_markup=kb.mainMenu)
-
-
 async def send_world_cycles(msg: types.Message):
     logging.info(f"Sending world cycles to {msg.from_user.id}")
     message = ""
-    cycle_list = await parse.get_cycles()
+    api = await parse.read_api_dump()
     
-    for cycle in cycle_list:
+    for cycle in api.cycles:
         message += f"{cycle.name}\n{bold('Status:')} {cycle.state}\n{bold('Time left:')} {cycle.eta}\n\n"
     
     await bot.send_message(msg.from_user.id, message, parse_mode='Markdown', reply_markup=kb.mainMenu)
@@ -68,7 +53,8 @@ async def send_world_cycles(msg: types.Message):
 
 async def send_sortie_info(msg: types.Message):
     logging.info(f"Sending sortie to {msg.from_user.id}")
-    sortie = await parse.get_sortie()
+    api = await parse.read_api_dump()
+    sortie = api.sortie
     message = f"🎭 *Faction:* {sortie.faction}\n\n" \
     f"☠️ *Boss:* {sortie.boss}\n\n" \
     f"⏱ *Time left:* {sortie.eta}\n\n"
@@ -82,9 +68,9 @@ async def send_sortie_info(msg: types.Message):
 
 async def send_invasions_info(msg: types.Message):
     logging.info(f"Sending invasions to {msg.from_user.id}")
-    invasions = parse.get_invasions()
+    api = await parse.read_api_dump()
     message = "*⚔️ Invasions*\n\n"
-    for invasion in invasions:
+    for invasion in api.invasions:
         message += f"*Mission:* {invasion.location}\n*Defender*: {invasion.defender.faction} | *Reward*: {invasion.defender.reward.name}\n"
         message += f"*Attacker*: {invasion.attacker.faction} | *Reward*: {invasion.attacker.reward.name}\n"
         message += f"⏱*Time Left:* {invasion.eta}\n\n"

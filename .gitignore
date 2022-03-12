@@ -3,4 +3,5 @@ src
 logs
 venv
 .env
+*.db
 chats.txt

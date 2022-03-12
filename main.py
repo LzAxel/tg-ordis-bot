@@ -46,11 +46,8 @@ async def check_new_alerts():
 async def send_articles():
     chat_list = db.get_users()
 
-    while True:
-        await asyncio.sleep(config.NEWS_CHECK_RATE)
-        new_articles = await parse.get_new_articles() 
-        if not new_articles: continue
-        
+    new_articles = await parse.get_new_articles()
+    if new_articles:
         for chat in chat_list:
             chat = chat[0]
             for article in new_articles:

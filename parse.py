@@ -1,17 +1,13 @@
 import asyncio
-from email import header
-from pprint import pprint
 import time
 import json
 import logging
 from bs4 import BeautifulSoup
 import requests
-import random
 from pathlib import Path
-import utils
 import config
 import time
-from pydantic import BaseModel, Field, JsonError, parse_file_as, validator, parse_raw_as
+from pydantic import BaseModel, Field, validator, parse_raw_as
 import pydantic
 import re
 from typing import Optional
@@ -98,6 +94,7 @@ class WorldState(BaseModel):
         else:
             return value
 
+
 class Article(BaseModel):
     title: str
     description: str
@@ -135,6 +132,23 @@ class APIDump(BaseModel):
             for i in cycle_list:
                 value.append(values[i])
             return value
+
+
+class RelicReward(BaseModel):
+    name: str = Field(alias="itemName")
+    rarity: Optional[str] = Field(alias="chance")
+
+
+class Relic(BaseModel):
+    name: str = Field(alias="relicName")
+    tier: str = Field(alias="tier")
+    rewards: list[RelicReward]
+        
+    @validator("rewards")
+    def validate_rewards(cls, value):
+        return sorted(value, key = lambda i: (float(i.rarity)))
+
+ 
 
 async def parse_articles():
     logging.info("Parsing articles")
@@ -180,7 +194,18 @@ async def update_api_dump():
     with open(Path("src", "api_dump.json"), "w", encoding="UTF-8") as file:
         json.dump(export, file, indent=4, ensure_ascii=False)
     logging.info("Updating API Dump Complete!")
-        
+
+
+async def update_relic_dump():
+    logging.info("Updating Relic Dump")
+    response = requests.get("https://drops.warframestat.us/data/relics.json").json()
+    data = pydantic.parse_obj_as(list[Relic], response["relics"])
+    data = [i.dict(by_alias=True) for i in data if i.rewards[0].rarity in ["6", "17", "20"]]
+    with open(Path("src", "relics_dump.json"), "w", encoding="UTF-8") as file:
+        json.dump(data, file, indent=4, ensure_ascii=False)
+
+    logging.info("Updating Relics Dump Complete!")       
+
 
 async def read_api_dump():
     dump = APIDump.parse_file(Path("src", "api_dump.json"))
@@ -248,27 +273,6 @@ async def get_sortie() -> Sortie:
     return sortie
 
 
-def get_alerts():
-    logging.info(f"Parsing Alerts")
-    raw_alerts_list = requests.get('https://api.warframestat.us/pc/alerts?language=en').json()
-    alerts_list = []
-    for alert in raw_alerts_list:
-        if alert['active']:
-            mission_info = alert['mission']
-            reward_info = mission_info['reward']
-            reward_name = utils.translate_item_name(str(reward_info['asString']).replace('cr', ' кредитов'))
-            for word in config.TERRIBLE_WORDS:
-                if word in reward_name:
-                    reward_name = word + ' ' + reward_name.replace(f'{word}', '')
-            alerts_list.append({
-                'description': mission_info['description'],
-                'mission': f"{mission_info['node']} - {mission_info['type']}",
-                'faction': mission_info['faction'],
-                'reward': reward_name
-            })
-    logging.debug(alerts_list)
-
-
 def get_invasions() -> list:
     logging.info(f"Parsing Invasions")
     raw_data = requests.get('https://api.warframestat.us/pc/invasions?language=eu').text
@@ -280,89 +284,35 @@ def get_invasions() -> list:
     return data
 
 
-async def get_relic_data(relic: str) -> str:
-    message = ""
+async def get_relic_drop(req_relic: str) -> str:
+    logging.info(f"Parsing Relic Data")
 
-    ru_relic = ' '.join([i.capitalize() for i in relic[:2]])
-    translate_table = {
-        0: 'Intact',
-        1: 'Exceptional',
-        2: 'Flawless',
-        3: 'Radiant'
-    }
-    if len(relic) == 3 and relic[2].isdigit() and int(relic[2]) <= 3:
-        rarity = int(relic[2])
-    else:
-        rarity = 0
+    tier = req_relic.split()[0]
+    name = req_relic.split()[1]
 
-    relic = [i.capitalize() for i in relic[:2]]
-    link = f'https://drops.warframestat.us/data/relics/{relic[0]}/{relic[1]}.json'
-    try:
-        logging.info(f"Parsing Relic Data")
-        response = requests.get(link).json()
-        name = ' '.join(relic)
-        message += f"🎱 *Relic:* {name} ({translate_table[rarity]})\n\n"
-
-        for num, item in enumerate(response['rewards'][translate_table[rarity]]):
-            item.pop('_id')
-            item.pop('rarity')
-            name = item['itemName']
-            if len(name) > 19: name = name.replace("Blueprint", "")
-
-            
-            message += f"` - {name}".ljust(28) + \
-                       f"| {'🟨' if num == 0 else '⬜' if num <= 2 else '🟫'}\n`"
-                       
-    except json.decoder.JSONDecodeError:
-        message = "❗ Relic doesn't exist"
-        
-    finally:
-        return message
+    data = pydantic.parse_file_as(list[Relic], Path("src", "relics_dump.json"))
+    for relic in data:
+        if relic.name == name and relic.tier == tier:
+            return relic
 
 
-async def get_relics_with_current_item(request: str) -> str:
-    url = 'https://drops.warframestat.us/data/relics.json'
-    utils.make_reversed_translation_table()
-    message = ''
-    logging.info(f"Parsing Relic with {request}")
-    data = requests.get(url, headers=config.HEADERS).json()
+async def get_relics_with_item(req_item: str) -> list[Relic]:
+    logging.info(f"Parsing Relic Data With Item")
+    item = set(req_item.split())
     relics = []
-    request_list = [i.lower() for i in request.split(' ')]
-    for relic in data['relics']:
-        relic_name = f"{relic['tier']} {relic['relicName']}"
-        for item in relic['rewards']:
-            if {item['chance']} & {2, 11, 25.33}:
-                if set(request_list).issubset([i.lower() for i in item['itemName'].split(' ')]):
-                    if item['itemName'] in [i['name'] for i in relics]:
-                        for relic_item in relics:
-                            if relic_item['name'] == item['itemName']:
-                                relic_item['relic_list'].append({
-                                    'relic_name': relic_name,
-                                    'rarity': item['chance']
-                                })
-                                break
-                    else:
-                        relics.append({
-                            'name': item['itemName'],
-                            'relic_list': [
-                                {
-                                    'relic_name': relic_name,
-                                    'rarity': item['chance']
-                                }],
-                        })
-
-    for item in relics:
-        message += f"*Item: {item['name']}*\n"
-        for relic in item['relic_list']:
-            line = ''
-            line += " - Relic: {0}| {1}\n"\
-                .format(relic['relic_name'].ljust(11), ['🟨' if relic['rarity'] == 2 else '⬜' if relic['rarity'] == 11 else '🟫'][0])
-            message += f'`{line}`'
-        message += '\n'
-        
-    return message
+    
+    data = pydantic.parse_file_as(list[Relic], Path("src", "relics_dump.json"))
+    for relic in data:
+        for reward in relic.rewards:
+            if item.issubset(set(reward.name.split())):
+                relic.rewards = [i for i in relic.rewards if item.issubset(set(i.name.split()))]
+                relics.append(relic)
+    
+    return sorted(relics, key=lambda x: x.rewards[0].name)
 
 
 if __name__ == "__main__":
-    asyncio.run(update_api_dump())
+    # asyncio.run(update_relic_dump())
+    asyncio.run(get_relics_with_item("Nikana Prime"))
+    # asyncio.run(get_relic_data("Axi A1"))
     # print(asyncio.run((read_api_dump("alerts"))))

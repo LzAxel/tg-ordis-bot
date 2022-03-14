@@ -1,8 +1,7 @@
+import re
 import aiogram
 from aiogram import types, filters, Dispatcher
-from aiogram.utils.markdown import hlink, bold
-import json
-from pathlib import Path
+from aiogram.utils.markdown import bold
 import logging
  
 import parse
@@ -21,23 +20,6 @@ async def process_start_command(msg: types.Message):
                     reply_markup=kb.mainMenu)
 
     db.add_user(msg.from_user.id, msg.from_user.full_name)
-
-
-async def process_help_command(msg: types.Message):
-    await msg.reply("⁉ Commands help \n\n"
-                    "- /latest - посмотреть последнюю новость с оф. сайта \n"
-                    "- 🌗Циклы - узнать статус всех открытых миров \n"
-                    "- 🛡Вылазка - узнать данные вылазки, включая миссии и оставшееся время \n\n"
-                    "- Посмотреть дроп с реликвии - {Эра} {Название} {Улучшение от 0 до 3 (не обяз.)}\n"
-                    "_Например:_ *Лит k7* или *lith k7*\n\n"
-                    "- Посмотреть с каких реликвий падает часть - {Название}\n"
-                    "_Например:_ *Рино Прайм* или *Rhino Prime*\n\n"
-                    "- Чтобы посмотреть конкретные части - {Название} Прайм {Часть}\n"
-                    "_Например:_ *Рино Прайм Чертёж* или *Rhino Prime Blueprint*\n\n"
-                    "📌 *Важная информация:* Не все предметы переведены на русский язык, поэтому,\n"
-                    "если бот не может найти предмет - то попробуйте написать его название на английском\n"
-                    "В будущем все предметы будут обязательно переведены"
-                    , parse_mode="Markdown", reply_markup=kb.mainMenu)
 
 
 async def send_world_cycles(msg: types.Message):
@@ -78,34 +60,44 @@ async def send_invasions_info(msg: types.Message):
     await msg.answer(message, parse_mode='Markdown', reply_markup=kb.mainMenu)
 
 
-async def send_relic_info(msg: types.Message):
+async def send_relic_drop(msg: types.Message):
+    command = msg.text.title()
     logging.info(f"Sending relic drop to {msg.from_user.id}")
-    command = msg.text.lower()
-    split_command = command.split(' ')
-    if split_command[0] in config.RELIC_COMMANDS:
-        message = await parse.get_relic_data(split_command)
-        if message:
-            await bot.send_message(msg.from_user.id, message, parse_mode='Markdown', reply_markup=kb.mainMenu)
-        else:
-            await bot.send_message(msg.from_user.id, "❗ Relic doesn't exist.",
-                                   reply_markup=kb.mainMenu)
-    else:
-        message = await parse.get_relics_with_current_item(command)
-        try:
-            if message:
-                await bot.send_message(msg.from_user.id, message, parse_mode='Markdown', reply_markup=kb.mainMenu)
-            else:
-                await bot.send_message(msg.from_user.id, "❗ Item doesn't exist.",
-                                       reply_markup=kb.mainMenu)
-        except aiogram.utils.exceptions.MessageIsTooLong:
-            await bot.send_message(msg.from_user.id, "❗ Too big request. Input specific items.",
-                                   reply_markup=kb.mainMenu)
+    relic = await parse.get_relic_drop(command)
+    if relic:
+        answer_message = f"🎱 *Relic:* {relic.tier} {relic.name}\n\n"
+        for item in relic.rewards:
+            answer_message += f"{'🟨' if item.rarity == '6' else '⬜' if item.rarity == '17' else '🟫'}  *Item:* {item.name}\n"
+
+        await msg.answer(answer_message)
+
+
+async def send_item_relic(msg: types.Message):
+    command = msg.text.title()
+    relics = await parse.get_relics_with_item(command)
+
+    if relics:
+        answer_message = f"🎱 *Relics with:* {command}\n"
+        latest_name = ""
+
+        for relic in relics:
+            item = relic.rewards[0]
+            item_message = ""
+            if latest_name != item.name:
+                latest_name = item.name
+                item_message = f"\n*Item:* {item.name}\n"
+            
+            relic_message = f"{'🟨' if item.rarity == '6' else '⬜' if item.rarity == '17' else '🟫'}  *Relic:* {relic.tier} {relic.name}\n"
+                
+            answer_message += item_message + relic_message
+
+        await msg.answer(answer_message)
 
 
 def register_handlers(dp: Dispatcher): 
     dp.register_message_handler(process_start_command, commands=['start'])
-    dp.register_message_handler(process_help_command, commands=['help'])
     dp.register_message_handler(send_world_cycles, filters.Text("🌗 World Cycles"))
     dp.register_message_handler(send_sortie_info, filters.Text("🛡 Sortie"))
     dp.register_message_handler(send_invasions_info, filters.Text("⚔️ Invasions"))
-    dp.register_message_handler(send_relic_info)
+    dp.register_message_handler(send_relic_drop, filters.Text(startswith=config.RELIC_COMMANDS, ignore_case=True))
+    dp.register_message_handler(send_item_relic)

@@ -1,26 +1,28 @@
+import time
 import json
+import logging
 from bs4 import BeautifulSoup
 import requests
-import asyncio
-import random
 from pathlib import Path
-import utils
 import config
 import time
-from pydantic import BaseModel
+from pydantic import parse_raw_as
+import pydantic
+import re
+from classes import APIDump, Invasion, Sortie, WorldState, Relic, Article
 
 
-cwd = Path(__file__).parent
-
-relic_names = []
-
-async def get_articles():
-    print('Начало парсинга - ', time.strftime("%d/%m/%Y %H:%M:%S"))
+async def parse_articles():
+    logging.info("Parsing articles")
     url = config.OFFICIAL_URL
     headers = config.HEADERS
     articles_list = []
-    response = requests.get(url, headers).text
-    soup = BeautifulSoup(response, 'lxml')
+
+    session = requests.Session()
+    session.headers.update(headers)
+    session.get(url, headers=headers)
+    request = session.get(url, headers=headers)
+    soup = BeautifulSoup(request.text, 'lxml')
 
     try:
         parse_articles_list = soup.find(id='newsSection').find_all(class_='post')
@@ -29,237 +31,134 @@ async def get_articles():
             title = parse_article.find(class_='title').text.strip()
             description = parse_article.find(class_='description').text.strip()
             date = parse_article.find(class_='date').text.strip()
-            read_more = parse_article.find(class_='read-more').get('href')
+            read_more = parse_article.get("data-link")
             photo = 'https:' + parse_article.find(class_='image').find('img').get('src')
-            articles_list.append({
-                'Title': title,
-                'Description': description,
-                'Date': date,
-                'Read_More': read_more,
-                'Photo': photo
-            })
+            articles_list.append(Article(title=title, description=description, 
+                                         date=date, photo=photo, url=read_more))
 
     except Exception as ex:
-        print(f'Ошибка парсинга - {ex}')
-    with open(rf'{cwd}\src\articles.json', 'w+', encoding='UTF-8') as file:
-        json.dump(articles_list, file, ensure_ascii=False, indent=4)
+        logging.exception(ex)
+        logging.error('Failed to parse. Check logs please.')
+        error_time = time.strftime('%d-%m-%Y_%S-%M-%H', time.gmtime())
+        with open(Path("logs", f"articles-{error_time}"), 'w+', encoding='UTF-8') as file:
+            file.write(request.text)
+
+    return articles_list
 
 
-async def get_new_articles():
-    saved_articles = []
-    with open(rf'{cwd}\chats.txt', 'r', encoding='UTF-8') as file:
-        chats = file.readlines()
+async def update_api_dump():
+    logging.info("Updating API Dump")
+    response = requests.get("https://api.warframestat.us/pc").text
+    data = APIDump.parse_raw(response)
+    cycle_list = [re.findall("\D*Cycle", i) for i in data.dict().keys()]
+    cycle_list = {i[0] for i in cycle_list if i}
+    export = data.dict(exclude=cycle_list, by_alias=True)
+    with open(Path("src", "api_dump.json"), "w", encoding="UTF-8") as file:
+        json.dump(export, file, indent=4, ensure_ascii=False)
+    logging.info("Updating API Dump Complete!")
 
-    while True:
-        await get_articles()
 
-        with open(rf'{cwd}\src\articles.json', 'r', encoding='UTF-8') as file:
-            got_articles = json.load(file)
-        saved_articles_names = [i['Title'] for i in saved_articles]
-        got_articles_names = [i['Title'] for i in got_articles]
+async def update_relic_dump():
+    logging.info("Updating Relic Dump")
+    response = requests.get("https://drops.warframestat.us/data/relics.json").json()
+    data = pydantic.parse_obj_as(list[Relic], response["relics"])
+    data = [i.dict(by_alias=True) for i in data if i.rewards[0].rarity in ["6", "17", "20"]]
+    with open(Path("src", "relics_dump.json"), "w", encoding="UTF-8") as file:
+        json.dump(data, file, indent=4, ensure_ascii=False)
 
-        if saved_articles:
-            saved_articles = got_articles
-            print('Первый запуск')
-        elif all(get in saved_articles_names for get in got_articles_names):
-            print("Новых записей не найдено")
+    logging.info("Updating Relics Dump Complete!")       
+
+
+async def read_api_dump():
+    dump = APIDump.parse_file(Path("src", "api_dump.json"))
+    
+    return dump
+
+    
+async def get_new_articles() -> list:
+    articles = await parse_articles()
+
+    if not Path("src", "articles.json").exists(): Path("src", "articles.json").touch()
+
+    try:
+        with open(Path("src", "articles.json"), 'r', encoding='UTF-8') as file:
+            data = file.read()
+            cached_articles = parse_raw_as(list[Article], data)
+
+        if all(a in cached_articles for a in articles):
+            logging.info("New Articles Not Found")
+
         else:
-            print("Обнаружены новые записи")
-            new_articles = [get for get in got_articles if get not in saved_articles]
-            saved_articles = got_articles
-            print(new_articles)
-            return new_articles
-        await asyncio.sleep(random.randrange(60, 90))
+            return [a for a in articles if a not in cached_articles] # New articles
 
+    except json.JSONDecodeError:
+        logging.info("First Articles Check")
 
-async def get_relic_names_list():
-    relic_names_list = []
-    with open(fr'{cwd}\src\relics.json', 'r', encoding='UTF-8') as file:
-        data = json.load(file)
-        for era in data:
-            relic_names_list += [relic['name'] for relic in data[era]]
-        return relic_names_list
+    finally:            
+        with open(Path("src", "articles.json"), 'w', encoding='UTF-8') as file:
+            json.dump([i.dict() for i in articles], file, ensure_ascii=False, indent=4)
+    
+    
 
+async def get_cycles() -> list:
+    cycle_list = []
+    
+    for value in config.WORLD_STATE_URLS.values():
+        logging.info(f"Parsing {value[0]} cycle")
+        name = value[0]
+        data = requests.get(value[1], config.HEADERS).text
+        
+        cycle = WorldState.parse_raw(data)
+        cycle.name = name
+        cycle_list.append(cycle)
+    
+    logging.debug(cycle_list)    
+        
+    return cycle_list
+    
 
-async def get_cycles():
-    data = requests.get('https://api.warframestat.us/pc', config.HEADERS).json()
-    earth_cycle = {
-        'name': '🌎 Земля',
-        'state': 'День' if data['earthCycle']['state'] == 'day' else 'Ночь',
-        'timeLeft': data['earthCycle']['timeLeft']
-    }
-    cetus_cycle = {
-        'name': '✨ Равнины Эйдолона',
-        'state': 'День' if data['cetusCycle']['state'] == 'day' else 'Ночь',
-        'timeLeft': data['cetusCycle']['timeLeft']
-    }
-    vallis_cycle = {
-        'name': '🌪 Долина Сфер',
-        'state': 'Холод' if data['vallisCycle']['state'] == 'cold' else 'Тепло',
-        'timeLeft': data['vallisCycle']['timeLeft']
-    }
-    cambion_cycle = {
-        'name': '🔥 Камбионский Дрейф',
-        'state': 'Воум' if data['cambionCycle']['active'] == 'vome' else 'Фэз',
-        'timeLeft': data['cambionCycle']['timeLeft']
-    }
-    return earth_cycle, cetus_cycle, vallis_cycle, cambion_cycle
-
-
-async def get_sortie():
-    data = requests.get('https://api.warframestat.us/pc/sortie?language=ru', config.HEADERS).json()
-    sortie = {}
-    for mission in data['variants']:
-        mission.pop('modifierDescription')
-    sortie.update({'missions': data['variants'],
-                   'faction': data['faction'],
-                   'boss': data['boss'],
-                   'timeLeft': data['eta']})
+async def get_sortie() -> Sortie:
+    logging.info(f"Parsing Sortie")
+    data = requests.get('https://api.warframestat.us/pc/sortie?language=eu', config.HEADERS).text
+    sortie = Sortie.parse_raw(data)
+    logging.debug(sortie)
+    
     return sortie
 
 
-async def get_relic_data(relic):
-    message = ""
-
-    ru_relic = ' '.join([i.capitalize() for i in relic[:2]])
-    translate_table = {
-        0: 'Intact',
-        1: 'Exceptional',
-        2: 'Flawless',
-        3: 'Radiant'
-    }
-    if len(relic) == 3 and relic[2].isdigit() and int(relic[2]) <= 3:
-        rarity = int(relic[2])
-    else:
-        rarity = 0
-    if utils.translate_item_name(relic[0].capitalize()):
-        relic[0] = utils.translate_item_name(relic[0].capitalize(), lang='eu')
-    relic = [i.capitalize() for i in relic[:2]]
-    link = f'https://drops.warframestat.us/data/relics/{relic[0]}/{relic[1]}.json'
-    try:
-        response = requests.get(link).json()
-        name = ' '.join(relic)
-        message += f"🎱 *Реликвия:* {utils.translate_item_name(name)} ({translate_table[rarity].replace(translate_table[rarity],utils.translate_item_name(str(translate_table[rarity])))})\n\n"
-
-        for num, item in enumerate(response['rewards'][translate_table[rarity]]):
-            item.pop('_id')
-            item.pop('rarity')
-            name = utils.translate_item_name(item['itemName'])
-            for word in config.TERRIBLE_WORDS:
-                if word in name:
-                    name = word + ' ' + name.replace(f'{word}', '')
-            message += f"` - {name}".ljust(36) + \
-                       f"| {'🟨' if num == 0 else '⬜' if num <= 2 else '🟫'} {item['chance']}%\n`"
-    except json.decoder.JSONDecodeError:
-        message = '❗ Такой реликвии не существует. Проверьте правильность написания.'
-    finally:
-        return message
+def get_invasions() -> list:
+    logging.info(f"Parsing Invasions")
+    raw_data = requests.get('https://api.warframestat.us/pc/invasions?language=eu').text
+    data = parse_raw_as(list[Invasion], raw_data)
+    logging.debug(data)
+    #Select only uncompleted invasions
+    data = [i for i in data if i.completed == False and '-' not in i.eta]
+    
+    return data
 
 
-async def get_relics_with_current_item(request):
-    url = 'https://drops.warframestat.us/data/relics.json'
-    utils.make_reversed_translation_table()
-    request = utils.translate_item_name(request, 'eu')
-    message = ''
-    data = requests.get(url, headers=config.HEADERS).json()
+async def get_relic_drop(req_relic: str) -> str:
+    logging.info(f"Parsing Relic Data")
+
+    tier = req_relic.split()[0]
+    name = req_relic.split()[1]
+
+    data = pydantic.parse_file_as(list[Relic], Path("src", "relics_dump.json"))
+    for relic in data:
+        if relic.name == name and relic.tier == tier:
+            return relic
+
+
+async def get_relics_with_item(req_item: str) -> list[Relic]:
+    logging.info(f"Parsing Relic Data With Item")
+    item = set(req_item.split())
     relics = []
-    request_list = [i.lower() for i in request.split(' ')]
-    for relic in data['relics']:
-        relic_name = f"{relic['tier']} {relic['relicName']}"
-        for item in relic['rewards']:
-            if {item['chance']} & {2, 11, 25.33}:
-                if set(request_list).issubset([i.lower() for i in item['itemName'].split(' ')]):
-                    if item['itemName'] in [i['name'] for i in relics]:
-                        for relic_item in relics:
-                            if relic_item['name'] == item['itemName']:
-                                relic_item['relic_list'].append({
-                                    'relic_name': utils.translate_item_name(relic_name),
-                                    'rarity': item['chance']
-                                })
-                                break
-                    else:
-                        relics.append({
-                            'name': item['itemName'],
-                            'relic_list': [
-                                {
-                                    'relic_name': utils.translate_item_name(relic_name),
-                                    'rarity': item['chance']
-                                }],
-                        })
-    # Перевод имён на русский и Формирование сообщения
-    for item in relics:
-        name = utils.translate_item_name(item['name'])
-        for word in config.TERRIBLE_WORDS:
-            if word in name:
-                name = word + ' ' + name.replace(f'{word}', '')
-        item['name'] = name
-        message += f"*Предмет: {item['name']}*\n"
-        for relic in item['relic_list']:
-            line = ''
-            line += " - Реликвия: {0}| {1}\n"\
-                .format(relic['relic_name'].ljust(11), ['🟨' if relic['rarity'] == 2 else '⬜' if relic['rarity'] == 11 else '🟫'][0])
-            message += f'`{line}`'
-        message += '\n'
-    return message
-
-
-def cache_json(json_data, name):
-    current_time = time.strftime(f"%d-%m-%Y_%H-{'00' if time.strftime('%M') < '30' else '30'}")
-    file_src = Path(f"{cwd}/src/{name}_{current_time}.json")
-    del_files_list = [file.unlink(missing_ok=True) for file in Path(f"{cwd}/src").glob(f'{name}*.json') if file != file_src]
-    if not file_src.exists():
-        with open(Path(f"{cwd}/src/{name}_{current_time}.json"), 'w', encoding='UTF-8') as file:
-            json.dump(json_data, file, ensure_ascii=False, indent=4)
-
-
-def get_alerts():
-    raw_alerts_list = requests.get('https://api.warframestat.us/pc/alerts?language=ru').json()
-    alerts_list = []
-    for alert in raw_alerts_list:
-        if alert['active']:
-            mission_info = alert['mission']
-            reward_info = mission_info['reward']
-            reward_name = utils.translate_item_name(str(reward_info['asString']).replace('cr', ' кредитов'))
-            for word in config.TERRIBLE_WORDS:
-                if word in reward_name:
-                    reward_name = word + ' ' + reward_name.replace(f'{word}', '')
-            alerts_list.append({
-                'description': mission_info['description'],
-                'mission': f"{mission_info['node']} - {mission_info['type']}",
-                'faction': mission_info['faction'],
-                'reward': reward_name
-            })
-    cache_json(alerts_list, 'alerts')
-
-
-def get_invasions():
-    raw_invasions_list = requests.get('https://api.warframestat.us/pc/invasions?language=ru').json()
-    invasions_list = []
-    for invasion in raw_invasions_list:
-        if not invasion['completed']:
-            invasions_list.append({
-                'mission': invasion['node'],
-                'eta': utils.reformat_time(invasion['eta']),
-                'defendingFaction': invasion['defendingFaction'],
-                'attackingFaction': invasion['attackingFaction'],
-                'defenderReward': ['Нет' if not invasion['defenderReward']['asString'] else invasion['defenderReward']['asString']][0],
-                'attackerReward': ['Нет' if not invasion['attackerReward']['asString'] else invasion['attackerReward']['asString']][0]
-
-            })
-    cache_json(invasions_list, 'invasions')
-
-
-def read_cached_json(name):
-    current_time = time.strftime(f"%d-%m-%Y_%H-{'00' if time.strftime('%M') < '30' else '30'}")
-    file_src = Path(f"{cwd}/src/{name}_{current_time}.json")
-    print(file_src.exists(), file_src)
-    if not file_src.exists():
-        get_invasions()
-        get_alerts()
-    with open(Path(f"{cwd}/src/{name}_{current_time}.json"), 'r', encoding='UTF-8') as file:
-        return json.load(file)
-
-
-if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(get_invasions())
+    
+    data = pydantic.parse_file_as(list[Relic], Path("src", "relics_dump.json"))
+    for relic in data:
+        for reward in relic.rewards:
+            if item.issubset(set(reward.name.split())):
+                relic.rewards = [i for i in relic.rewards if item.issubset(set(i.name.split()))]
+                relics.append(relic)
+    
+    return sorted(relics, key=lambda x: x.rewards[0].name)

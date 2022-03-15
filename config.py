@@ -1,9 +1,13 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 TOKEN = os.getenv('TOKEN')
 
-RELIC_COMMANDS = ['lith', 'neo', 'meso', 'axi', 'лит', 'нео', 'мезо', 'акси', 'requiem', 'реквием']
-TERRIBLE_WORDS = ['Эксилус', 'Адаптер', 'Звезда', 'Осколок', 'Чертёж']
+RELIC_COMMANDS = ['lith', 'neo', 'meso', 'axi']
+
+OFFICIAL_URL = 'https://www.warframe.com/'
 
 HEADERS = {
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
@@ -11,4 +15,4 @@ HEADERS = {
     'Host': 'www.warframe.com'
 }
 
-OFFICIAL_URL = 'https://www.warframe.com/'
+

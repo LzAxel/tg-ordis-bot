@@ -1,6 +1,6 @@
 from bot import dp
 from main import send_articles
-from parse import update_api_dump, update_relic_dump
+from parse import get_new_articles, update_api_dump, update_relic_dump
 import logging, coloredlogs
 
 from handlers import register_handlers
@@ -23,11 +23,13 @@ async def scheduler():
 
 
 async def on_startup(_):
-    logging.info("On startup")
-    if not Path("src", "articles.json").exists(): Path("src").mkdir(exist_ok=True)
+    if not Path("src", "articles.json").exists(): 
+        Path("src").mkdir(exist_ok=True)
+        await get_new_articles()
+
     if not Path("src", "api_dump.json").exists(): await update_api_dump()
+    if not Path("src", "relics_dump.json").exists(): await update_relic_dump()
     if not Path("logs").exists(): Path("logs").mkdir()
-    
 
     register_handlers(dp)
     asyncio.create_task(scheduler())

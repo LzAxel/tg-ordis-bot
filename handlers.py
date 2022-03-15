@@ -1,5 +1,3 @@
-import re
-import aiogram
 from aiogram import types, filters, Dispatcher
 from aiogram.utils.markdown import bold
 import logging
@@ -13,17 +11,19 @@ import config
 async def process_start_command(msg: types.Message):
     await msg.reply("🤖 Hi, I'm - Ordis, Warframe's events informator bot. \n\n"
                     "🔔 There are my opportunities: \n\n"
-                    " - I'll automatically send news from official site.\n"
-                    " - You can know drops from any relic. \n"
-                    " - You can know relics with current items. \n"
-                    " - Check current world cycles, sortie, invasions. \n\n", parse_mode="Markdown",
+                    " - I'll *automatically* send news from official site.\n"
+                    " - You can know drops from *any* relic. \n"
+                    " - Or relics with *current* items.\n"
+                    "   *Just type name to bot and see it!* (case doesn't matter)\n"
+                    "   *Examples:* 'axi o5', 'baza prime', 'loki'\n"
+                    " - Check current *world cycles*, *sortie* and *invasions*. \n\n", parse_mode="Markdown",
                     reply_markup=kb.mainMenu)
 
     db.add_user(msg.from_user.id, msg.from_user.full_name)
 
 
 async def send_world_cycles(msg: types.Message):
-    logging.info(f"Sending world cycles to {msg.from_user.id}")
+    logging.info(f"Sending World Cycles | User ID: {msg.from_user.id}")
     message = ""
     api = await parse.read_api_dump()
     
@@ -34,7 +34,7 @@ async def send_world_cycles(msg: types.Message):
 
 
 async def send_sortie_info(msg: types.Message):
-    logging.info(f"Sending sortie to {msg.from_user.id}")
+    logging.info(f"Sending Sortie | User ID: {msg.from_user.id}")
     api = await parse.read_api_dump()
     sortie = api.sortie
     message = f"🎭 *Faction:* {sortie.faction}\n\n" \
@@ -49,7 +49,7 @@ async def send_sortie_info(msg: types.Message):
 
 
 async def send_invasions_info(msg: types.Message):
-    logging.info(f"Sending invasions to {msg.from_user.id}")
+    logging.info(f"Sending Invasions | User ID: {msg.from_user.id}")
     api = await parse.read_api_dump()
     message = "*⚔️ Invasions*\n\n"
     for invasion in api.invasions:
@@ -62,7 +62,7 @@ async def send_invasions_info(msg: types.Message):
 
 async def send_relic_drop(msg: types.Message):
     command = msg.text.title()
-    logging.info(f"Sending relic drop to {msg.from_user.id}")
+    logging.info(f"Sending Relic Drop | Relic: {command} | User ID: {msg.from_user.id}")
     relic = await parse.get_relic_drop(command)
     if relic:
         answer_message = f"🎱 *Relic:* {relic.tier} {relic.name}\n\n"
@@ -70,10 +70,13 @@ async def send_relic_drop(msg: types.Message):
             answer_message += f"{'🟨' if item.rarity == '6' else '⬜' if item.rarity == '17' else '🟫'}  *Item:* {item.name}\n"
 
         await msg.answer(answer_message)
+    else:
+        await msg.answer("❌ *Relic Doesn't Exist*")
 
 
 async def send_item_relic(msg: types.Message):
     command = msg.text.title()
+    logging.info(f"Sending Relics With Item | Item: {command} | User ID: {msg.from_user.id}")
     relics = await parse.get_relics_with_item(command)
 
     if relics:
@@ -92,6 +95,8 @@ async def send_item_relic(msg: types.Message):
             answer_message += item_message + relic_message
 
         await msg.answer(answer_message)
+    else:
+        await msg.answer("❌ *Relics With This Item Doesn't Exist*")
 
 
 def register_handlers(dp: Dispatcher): 

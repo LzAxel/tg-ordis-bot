@@ -1,4 +1,3 @@
-import asyncio
 import time
 import json
 import logging
@@ -7,148 +6,11 @@ import requests
 from pathlib import Path
 import config
 import time
-from pydantic import BaseModel, Field, validator, parse_raw_as
+from pydantic import parse_raw_as
 import pydantic
 import re
-from typing import Optional
+from classes import APIDump, Invasion, Sortie, WorldState, Relic, Article
 
-class SortieMission(BaseModel):
-    mission_type: str = Field(alias="missionType")
-    modifier: str
-    description: str = Field(alias="modifierDescription")
-    location: str = Field(alias="node")
-
-
-class Sortie(BaseModel):
-    boss: str
-    faction: str
-    eta: str
-    missions: list[SortieMission] = Field(alias="variants")
-
-
-class Reward(BaseModel):
-    name: str = Field(alias="asString")
-
-    class Config:
-        validate_assignment = True
-
-    @validator('name')
-    def set_empty_item(cls, name):
-        if not name:
-            return "None"
-        else:
-            return name
-        
-
-class AlertMission(BaseModel):
-    location: str = Field(alias="node")
-    description: str
-    type: str
-    faction: str
-    reward: Reward
-
-
-class Alert(BaseModel):
-    mission: AlertMission
-    active: bool
-    eta: str
-
-
-class Faction(BaseModel):
-    faction: str
-    reward: Reward
-
-
-class Invasion(BaseModel):
-    location: str = Field(alias="node")
-    eta: str
-    defender: Faction
-    attacker: Faction
-    completed: bool
-
-
-class WorldState(BaseModel):
-    name: str = Field(alias="id")
-    state: Optional[str] = Field(alias="active")
-    eta: str = Field(alias="timeLeft")
-
-    class Config:
-        allow_population_by_field_name = True
-
-    @validator("state")
-    def capitalize_state(cls, value):
-        
-        return value.capitalize()
-
-    @validator("name", always=True)
-    def set_name(cls, value):
-        template = {
-            "earth": "🌎 Earth",
-            "cetus": "✨ Cetus",
-            "cambion": "🔥 Cambion Drift",
-            "vallis": "🌪 Orb Vallis"
-        }
-        value = value.split("Cycle")[0]
-        if value in template.keys():
-            return template[value]
-        else:
-            return value
-
-
-class Article(BaseModel):
-    title: str
-    description: str
-    date: str
-    photo: str
-    url: str
-
-
-class APIDump(BaseModel):
-    timestamp: str
-    sortie: Sortie
-    invasions: list[Invasion]
-    alerts: list[Alert]
-    cetusCycle: Optional[WorldState]
-    vallisCycle: Optional[WorldState]
-    cambionCycle: Optional[WorldState]
-    earthCycle: Optional[WorldState]
-    cycles: Optional[list[WorldState]]
-
-    @validator("invasions")
-    def validate_invasion(cls, value):
-        value = [i for i in value if not i.completed]
-
-        return value
-
-
-    @validator("cycles", always=True)
-    def validate_cycles(cls, value, values):
-        if value:
-            return value
-        else:
-            value = []
-            cycle_list = [re.findall("\D*Cycle", i) for i in values.keys()]
-            cycle_list = [i[0] for i in cycle_list if i]
-            for i in cycle_list:
-                value.append(values[i])
-            return value
-
-
-class RelicReward(BaseModel):
-    name: str = Field(alias="itemName")
-    rarity: Optional[str] = Field(alias="chance")
-
-
-class Relic(BaseModel):
-    name: str = Field(alias="relicName")
-    tier: str = Field(alias="tier")
-    rewards: list[RelicReward]
-        
-    @validator("rewards")
-    def validate_rewards(cls, value):
-        return sorted(value, key = lambda i: (float(i.rarity)))
-
- 
 
 async def parse_articles():
     logging.info("Parsing articles")
@@ -213,39 +75,30 @@ async def read_api_dump():
     return dump
 
     
-async def get_new_articles():
+async def get_new_articles() -> list:
     articles = await parse_articles()
-    try:
-        if not Path("src", "articles.json").exists(): Path("src", "articles.json").touch()
 
+    if not Path("src", "articles.json").exists(): Path("src", "articles.json").touch()
+
+    try:
         with open(Path("src", "articles.json"), 'r', encoding='UTF-8') as file:
             data = file.read()
             cached_articles = parse_raw_as(list[Article], data)
 
         if all(a in cached_articles for a in articles):
-            logging.info("No articles was founded!")
+            logging.info("New Articles Not Found")
 
         else:
-            new_articles = [a for a in articles if a not in cached_articles]
-            
-            return new_articles
+            return [a for a in articles if a not in cached_articles] # New articles
 
     except json.JSONDecodeError:
-        logging.info("Creating first articles.json dump")
+        logging.info("First Articles Check")
 
-    finally:
+    finally:            
         with open(Path("src", "articles.json"), 'w', encoding='UTF-8') as file:
             json.dump([i.dict() for i in articles], file, ensure_ascii=False, indent=4)
     
-
-async def get_relic_names_list() -> list:
-    relic_names_list = []
-    with open(Path("src", "relics.json"), 'r', encoding='UTF-8') as file:
-        data = json.load(file)
-        for era in data:
-            relic_names_list += [relic['name'] for relic in data[era]]
-        return relic_names_list
-
+    
 
 async def get_cycles() -> list:
     cycle_list = []
@@ -309,10 +162,3 @@ async def get_relics_with_item(req_item: str) -> list[Relic]:
                 relics.append(relic)
     
     return sorted(relics, key=lambda x: x.rewards[0].name)
-
-
-if __name__ == "__main__":
-    # asyncio.run(update_relic_dump())
-    asyncio.run(get_relics_with_item("Nikana Prime"))
-    # asyncio.run(get_relic_data("Axi A1"))
-    # print(asyncio.run((read_api_dump("alerts"))))

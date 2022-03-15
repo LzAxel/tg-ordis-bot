@@ -1,4 +1,3 @@
-from ast import parse
 from aiogram import Bot, Dispatcher
 import config
 from database import Database

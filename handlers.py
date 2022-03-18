@@ -69,9 +69,9 @@ async def send_relic_drop(msg: types.Message):
         for item in relic.rewards:
             answer_message += f"{'🟨' if item.rarity == '6' else '⬜' if item.rarity == '17' else '🟫'}  *Item:* {item.name}\n"
 
-        await msg.answer(answer_message)
+        await msg.answer(answer_message, reply_markup=kb.mainMenu)
     else:
-        await msg.answer("❌ *Relic Doesn't Exist*")
+        await msg.answer("❌ *Relic Doesn't Exist*", reply_markup=kb.mainMenu)
 
 
 async def send_item_relic(msg: types.Message):
@@ -94,9 +94,9 @@ async def send_item_relic(msg: types.Message):
                 
             answer_message += item_message + relic_message
 
-        await msg.answer(answer_message)
+        await msg.answer(answer_message, reply_markup=kb.mainMenu)
     else:
-        await msg.answer("❌ *Relics With This Item Doesn't Exist*")
+        await msg.answer("❌ *Relics With This Item Doesn't Exist*", reply_markup=kb.mainMenu)
 
 
 def register_handlers(dp: Dispatcher): 

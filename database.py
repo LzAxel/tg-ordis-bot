@@ -1,27 +1,31 @@
-import sqlite3
+import psycopg2
 
 class Database():
-    def __init__(self, file_path):
-        self.connection = sqlite3.connect(file_path)
+    def __init__(self, URL):
+        self.connection = psycopg2.connect(URL)
         self.cursor = self.connection.cursor()
-        
+
         self.cursor.execute("""CREATE TABLE IF NOT EXISTS users (
-                            id integer PRIMARY KEY,
-                            username text NOT NULL);
+                            id bigint,
+                            username varchar(100) NOT NULL,
+                            PRIMARY KEY (id));
                             """)
         
     def add_user(self, user_id, user_name): 
         with self.connection:
-            data = self.cursor.execute("INSERT INTO users(id, username) VALUES(?, ?) ON CONFLICT (id)"
-                                "DO UPDATE SET username = ?", (user_id, user_name, user_name, ))
+            data = self.cursor.execute("INSERT INTO users(id, username) VALUES(%(id)s, %(name)s) ON CONFLICT (id)"
+                                "DO UPDATE SET username = %(name)s", {
+                                    "id": user_id,
+                                    "name": user_name
+                                })
         
     def remove_user(self, user_id):
         with self.connection:
-            self.cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            self.cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
         
 
     def get_users(self) -> list:
         with self.connection:
-            data = self.cursor.execute("SELECT id from users").fetchall()
+            self.cursor.execute("SELECT id from users")
         
-        return data
+        return self.cursor.fetchall()

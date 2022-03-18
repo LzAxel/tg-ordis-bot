@@ -5,4 +5,4 @@ from database import Database
 bot = Bot(token=config.TOKEN, parse_mode="MarkdownV2")
 dp = Dispatcher(bot)
 
-db = Database("db.db")
+db = Database(config.DATABASE_URL)

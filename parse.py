@@ -52,10 +52,11 @@ async def update_api_dump():
     data = APIDump.parse_raw(response)
     cycle_list = [re.findall("\D*Cycle", i) for i in data.dict().keys()]
     cycle_list = {i[0] for i in cycle_list if i}
-    dump = APIDump.parse_file(Path("src", "api_dump.json"))
-    for num, alert in enumerate(dump.alerts):
-        if alert.notified and alert.active:
-            data.alerts[num].notified = True
+    if data.alerts and Path("src", "api_dump.json").exists():
+        dump = APIDump.parse_file(Path("src", "api_dump.json"))
+        for num, alert in enumerate(dump.alerts):
+            if alert.notified and alert.active:
+                data.alerts[num].notified = True
 
     export = data.dict(exclude=cycle_list, by_alias=True)
     with open(Path("src", "api_dump.json"), "w", encoding="UTF-8") as file:

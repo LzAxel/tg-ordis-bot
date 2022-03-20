@@ -1,3 +1,4 @@
+import asyncio
 import time
 import json
 import logging
@@ -52,6 +53,11 @@ async def update_api_dump():
     data = APIDump.parse_raw(response)
     cycle_list = [re.findall("\D*Cycle", i) for i in data.dict().keys()]
     cycle_list = {i[0] for i in cycle_list if i}
+    dump = APIDump.parse_file(Path("src", "api_dump.json"))
+    for num, alert in enumerate(dump.alerts):
+        if alert.notified:
+            data.alerts[num].notified = True
+
     export = data.dict(exclude=cycle_list, by_alias=True)
     with open(Path("src", "api_dump.json"), "w", encoding="UTF-8") as file:
         json.dump(export, file, indent=4, ensure_ascii=False)
@@ -162,3 +168,18 @@ async def get_relics_with_item(req_item: str) -> list[Relic]:
                 relics.append(relic)
     
     return sorted(relics, key=lambda x: x.rewards[0].name)
+
+
+async def set_alert_notified(id):
+    api = await read_api_dump()
+    for alert in api.alerts:
+        if alert.id == id:
+            alert.notified = True
+
+    export = api.dict(by_alias=True)
+    with open(Path("src", "api_dump.json"), "w", encoding="UTF-8") as file:
+        json.dump(export, file, indent=4, ensure_ascii=False)
+
+
+if __name__ == "__main__":
+    asyncio.run(update_api_dump())

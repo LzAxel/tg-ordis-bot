@@ -40,8 +40,10 @@ class AlertMission(BaseModel):
 
 
 class Alert(BaseModel):
+    id: str
     mission: AlertMission
     active: bool
+    notified: bool = False 
     eta: str
 
 

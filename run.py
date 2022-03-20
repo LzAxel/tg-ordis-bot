@@ -1,5 +1,5 @@
 from bot import dp
-from main import send_articles
+from main import send_articles, send_alerts
 from parse import get_new_articles, update_api_dump, update_relic_dump
 import logging, coloredlogs
 
@@ -15,6 +15,7 @@ logging.basicConfig(level=logging.INFO)
 async def scheduler():
     aioschedule.every().hour.do(send_articles)
     aioschedule.every().minute.do(update_api_dump)
+    aioschedule.every(10).seconds.do(send_alerts)
     aioschedule.every().day.do(update_relic_dump)
 
     while True:

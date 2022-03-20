@@ -31,7 +31,6 @@ async def send_articles():
 
 async def send_alerts():
     chat_list = db.get_users()
-    
     api = await parse.read_api_dump()
     alerts = [i for i in api.alerts if not i.notified]
     if alerts:
@@ -50,5 +49,4 @@ async def send_alerts():
                 except aiogram.utils.exceptions.ChatNotFound:
                     logging.error(f"Chat {chat} Not Found")
                     db.remove_user(chat)
-
             await parse.set_alert_notified(alert.id)

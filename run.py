@@ -13,10 +13,10 @@ logging.basicConfig(level=logging.INFO)
 
 
 async def scheduler():
-    aioschedule.every().hour.do(send_articles)
-    aioschedule.every().minute.do(update_api_dump)
-    aioschedule.every(10).seconds.do(send_alerts)
     aioschedule.every().day.do(update_relic_dump)
+    aioschedule.every().minute.do(update_api_dump)
+    aioschedule.every().hour.do(send_articles)
+    aioschedule.every().minute.do(send_alerts)
 
     while True:
         await aioschedule.run_pending()

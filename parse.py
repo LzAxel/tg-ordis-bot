@@ -1,4 +1,3 @@
-import asyncio
 import time
 import json
 import logging
@@ -55,7 +54,7 @@ async def update_api_dump():
     cycle_list = {i[0] for i in cycle_list if i}
     dump = APIDump.parse_file(Path("src", "api_dump.json"))
     for num, alert in enumerate(dump.alerts):
-        if alert.notified:
+        if alert.notified and alert.active:
             data.alerts[num].notified = True
 
     export = data.dict(exclude=cycle_list, by_alias=True)
@@ -179,7 +178,3 @@ async def set_alert_notified(id):
     export = api.dict(by_alias=True)
     with open(Path("src", "api_dump.json"), "w", encoding="UTF-8") as file:
         json.dump(export, file, indent=4, ensure_ascii=False)
-
-
-if __name__ == "__main__":
-    asyncio.run(update_api_dump())

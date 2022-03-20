@@ -75,6 +75,8 @@ async def update_relic_dump():
 
 
 async def read_api_dump():
+    if not Path("src", "api_dump.json").exists():
+        await update_api_dump()
     dump = APIDump.parse_file(Path("src", "api_dump.json"))
     
     return dump

@@ -17,17 +17,15 @@ async def send_articles():
             for article in new_articles:
                 logging.info(f"Sending articles | User ID: {chat} Title: {article.title}")
                 try:
-                    await bot.send_photo(chat, article.photo)
+                    link = hlink(article.title, article.url)
+                    message = f"✨<b>{link}</b>✨\n\n📃 {article.description}\n\n📅 {article.date}"
+                    await bot.send_photo(chat, article.photo, caption=message, parse_mode="HTML")
 
                 except aiogram.utils.exceptions.ChatNotFound:
                     logging.error(f"Chat {chat} Not Found")
                     db.remove_user(chat)
                     continue
                     
-                link = hlink(article.title, article.url)
-                message = f"✨<b>{link}</b>✨\n\n📃 {article.description}\n\n📅 {article.date}"
-                await bot.send_message(chat, message, parse_mode="HTML", disable_web_page_preview=True)
-
 
 async def send_alerts():
     chat_list = db.get_users()

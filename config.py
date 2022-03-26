@@ -1,10 +1,14 @@
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
 TOKEN = os.getenv('TOKEN')
 DATABASE_URL = os.getenv('DATABASE_URL')
+
+ADMINS_ID = [1083151565]
+
 
 RELIC_COMMANDS = ['lith', 'neo', 'meso', 'axi']
 

@@ -1,18 +1,19 @@
-import time
 import json
 import logging
-from bs4 import BeautifulSoup
-import requests
-from pathlib import Path
-import config
-import time
-from pydantic import parse_raw_as
-import pydantic
 import re
-from classes import APIDump, Invasion, Sortie, WorldState, Relic, Article
+import time
+from pathlib import Path
+
+import pydantic
+import requests
+from bs4 import BeautifulSoup
+from pydantic import parse_raw_as
+
+import config
+from classes import APIDump, Article, Invasion, Relic, Sortie, WorldState
 
 
-async def parse_articles():
+async def parse_articles() -> list:
     logging.info("Parsing articles")
     url = config.OFFICIAL_URL
     headers = config.HEADERS
@@ -46,17 +47,19 @@ async def parse_articles():
     return articles_list
 
 
-async def update_api_dump():
+async def update_api_dump() -> None:
     logging.info("Updating API Dump")
     response = requests.get("https://api.warframestat.us/pc").text
     data = APIDump.parse_raw(response)
     cycle_list = [re.findall("\D*Cycle", i) for i in data.dict().keys()]
     cycle_list = {i[0] for i in cycle_list if i}
-    if data.alerts and Path("src", "api_dump.json").exists():
+    if Path("src", "api_dump.json").exists():
         dump = APIDump.parse_file(Path("src", "api_dump.json"))
         for num, alert in enumerate(dump.alerts):
             if alert.notified and alert.active:
                 data.alerts[num].notified = True
+        
+        if dump.trader.notified: data.trader.notified = True
 
     export = data.dict(exclude=cycle_list, by_alias=True)
     with open(Path("src", "api_dump.json"), "w", encoding="UTF-8") as file:
@@ -75,7 +78,7 @@ async def update_relic_dump():
     logging.info("Updating Relics Dump Complete!")       
 
 
-async def read_api_dump():
+async def read_api_dump() -> APIDump:
     if not Path("src", "api_dump.json").exists():
         await update_api_dump()
     dump = APIDump.parse_file(Path("src", "api_dump.json"))
@@ -105,51 +108,12 @@ async def get_new_articles() -> list:
     finally:            
         with open(Path("src", "articles.json"), 'w', encoding='UTF-8') as file:
             json.dump([i.dict() for i in articles], file, ensure_ascii=False, indent=4)
-    
-    
-
-async def get_cycles() -> list:
-    cycle_list = []
-    
-    for value in config.WORLD_STATE_URLS.values():
-        logging.info(f"Parsing {value[0]} cycle")
-        name = value[0]
-        data = requests.get(value[1], config.HEADERS).text
-        
-        cycle = WorldState.parse_raw(data)
-        cycle.name = name
-        cycle_list.append(cycle)
-    
-    logging.debug(cycle_list)    
-        
-    return cycle_list
-    
-
-async def get_sortie() -> Sortie:
-    logging.info(f"Parsing Sortie")
-    data = requests.get('https://api.warframestat.us/pc/sortie?language=eu', config.HEADERS).text
-    sortie = Sortie.parse_raw(data)
-    logging.debug(sortie)
-    
-    return sortie
 
 
-def get_invasions() -> list:
-    logging.info(f"Parsing Invasions")
-    raw_data = requests.get('https://api.warframestat.us/pc/invasions?language=eu').text
-    data = parse_raw_as(list[Invasion], raw_data)
-    logging.debug(data)
-    #Select only uncompleted invasions
-    data = [i for i in data if i.completed == False and '-' not in i.eta]
-    
-    return data
-
-
-async def get_relic_drop(req_relic: str) -> str:
+async def get_relic_drop(relic_name: str) -> str:
     logging.info(f"Parsing Relic Data")
 
-    tier = req_relic.split()[0]
-    name = req_relic.split()[1]
+    tier, name = relic_name.split()
 
     data = pydantic.parse_file_as(list[Relic], Path("src", "relics_dump.json"))
     for relic in data:
@@ -157,9 +121,9 @@ async def get_relic_drop(req_relic: str) -> str:
             return relic
 
 
-async def get_relics_with_item(req_item: str) -> list[Relic]:
+async def get_relics_with_item(item_name: str) -> list[Relic]:
     logging.info(f"Parsing Relic Data With Item")
-    item = set(req_item.split())
+    item = set(item_name.split())
     relics = []
     
     data = pydantic.parse_file_as(list[Relic], Path("src", "relics_dump.json"))
@@ -172,11 +136,15 @@ async def get_relics_with_item(req_item: str) -> list[Relic]:
     return sorted(relics, key=lambda x: x.rewards[0].name)
 
 
-async def set_alert_notified(id):
+async def set_event_notified(name: str, *id: int) -> None:
     api = await read_api_dump()
-    for alert in api.alerts:
-        if alert.id == id:
-            alert.notified = True
+    match name:
+        case "alert":       
+            for alert in api.alerts:
+                if alert.id == id:
+                    alert.notified = True
+        case "trader":
+            api.trader.notified = True
 
     export = api.dict(by_alias=True)
     with open(Path("src", "api_dump.json"), "w", encoding="UTF-8") as file:

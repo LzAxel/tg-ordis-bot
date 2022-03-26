@@ -1,11 +1,12 @@
-from aiogram import types, filters, Dispatcher
-from aiogram.utils.markdown import bold
 import logging
- 
+
+from aiogram import Dispatcher, filters, types
+from aiogram.utils.markdown import bold
+
+import config
+import keyboards as kb
 import parse
 from bot import bot, db
-import keyboards as kb
-import config
 
 
 async def process_start_command(msg: types.Message):
@@ -99,10 +100,24 @@ async def send_item_relic(msg: types.Message):
         await msg.answer("❌ *Relics With This Item Doesn't Exist*", reply_markup=kb.mainMenu)
 
 
+async def open_trader_inventory(query: types.CallbackQuery):
+    message = query.message
+    api = await parse.read_api_dump()
+    
+    inventory = api.trader.inventory
+    text = f"✨<b>Void Trader has arrived!</b>✨\n\nCheck out his new products\n\n"
+    for item in inventory:
+        text += f"<b>Name:</b> {item.name}\n<b>Credits:</b> {item.credits} | <b>Ducats:</b> {item.ducats}\n\n"
+        
+    await message.edit_text(text, parse_mode="HTML")
+
+
+
 def register_handlers(dp: Dispatcher): 
     dp.register_message_handler(process_start_command, commands=['start'])
     dp.register_message_handler(send_world_cycles, filters.Text("🌗 World Cycles"))
     dp.register_message_handler(send_sortie_info, filters.Text("🛡 Sortie"))
     dp.register_message_handler(send_invasions_info, filters.Text("⚔️ Invasions"))
     dp.register_message_handler(send_relic_drop, filters.Text(startswith=config.RELIC_COMMANDS, ignore_case=True))
+    dp.register_callback_query_handler(kb.trader_callback.filter(), open_trader_inventory)
     dp.register_message_handler(send_item_relic)

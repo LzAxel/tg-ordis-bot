@@ -1,6 +1,25 @@
-from pydantic import Field, BaseModel, validator
-from typing import Optional
+from ast import alias
 import re
+
+from pydantic import BaseModel, Field, validator
+
+
+class TraderItem(BaseModel):
+    name: str = Field(alias="item")
+    ducats: int 
+    credits: int
+
+
+class Trader(BaseModel):
+    active: bool
+    notified: bool = False
+    inventory: list[TraderItem]
+    loc: str = Field(alias="location")
+    eta: str = Field(alias="endString")
+
+    @validator("inventory")
+    def validate_inventory(cls, value):
+        return sorted(value, key= lambda x: x.ducats, reverse=True)
 
 
 class SortieMission(BaseModel):
@@ -62,7 +81,7 @@ class Invasion(BaseModel):
 
 class WorldState(BaseModel):
     name: str = Field(alias="id")
-    state: Optional[str] = Field(alias="active")
+    state: str | None = Field(alias="active")
     eta: str = Field(alias="timeLeft")
 
     class Config:
@@ -101,11 +120,12 @@ class APIDump(BaseModel):
     sortie: Sortie
     invasions: list[Invasion]
     alerts: list[Alert]
-    cetusCycle: Optional[WorldState]
-    vallisCycle: Optional[WorldState]
-    cambionCycle: Optional[WorldState]
-    earthCycle: Optional[WorldState]
-    cycles: Optional[list[WorldState]]
+    cetusCycle: WorldState | None
+    vallisCycle: WorldState | None
+    cambionCycle: WorldState | None
+    earthCycle: WorldState | None
+    cycles: list[WorldState] | None
+    trader: Trader | None = Field(alias="voidTrader")
 
     @validator("invasions")
     def validate_invasion(cls, value):
@@ -129,7 +149,7 @@ class APIDump(BaseModel):
 
 class RelicReward(BaseModel):
     name: str = Field(alias="itemName")
-    rarity: Optional[str] = Field(alias="chance")
+    rarity: str | None = Field(alias="chance")
 
 
 class Relic(BaseModel):

@@ -1,5 +1,3 @@
-import asyncio
-from http import cookies
 import time
 import json
 import logging
@@ -184,8 +182,3 @@ async def set_alert_notified(id):
     export = api.dict(by_alias=True)
     with open(Path("src", "api_dump.json"), "w", encoding="UTF-8") as file:
         json.dump(export, file, indent=4, ensure_ascii=False)
-
-
-if __name__ == "__main__":
-    a = asyncio.run(parse_articles())
-    print(a)

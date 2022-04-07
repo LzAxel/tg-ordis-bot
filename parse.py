@@ -1,3 +1,5 @@
+import asyncio
+from http import cookies
 import time
 import json
 import logging
@@ -18,12 +20,13 @@ async def parse_articles():
     headers = config.HEADERS
     articles_list = []
 
-    session = requests.Session()
-    session.headers.update(headers)
-    session.get(url, headers=headers)
-    request = session.get(url, headers=headers)
-    soup = BeautifulSoup(request.text, 'lxml')
+    with requests.Session() as session:
+        session.cookies.set("landing", "1", domain="warframe.com")
+        session.headers.update(headers)
+        response = session.get(url)
 
+    soup = BeautifulSoup(response.text, 'lxml')
+    
     try:
         parse_articles_list = soup.find(id='newsSection').find_all(class_='post')
 
@@ -41,7 +44,7 @@ async def parse_articles():
         logging.error('Failed to parse. Check logs please.')
         error_time = time.strftime('%d-%m-%Y_%S-%M-%H', time.gmtime())
         with open(Path("logs", f"articles-{error_time}"), 'w+', encoding='UTF-8') as file:
-            file.write(request.text)
+            file.write(response.text)
 
     return articles_list
 
@@ -181,3 +184,8 @@ async def set_alert_notified(id):
     export = api.dict(by_alias=True)
     with open(Path("src", "api_dump.json"), "w", encoding="UTF-8") as file:
         json.dump(export, file, indent=4, ensure_ascii=False)
+
+
+if __name__ == "__main__":
+    a = asyncio.run(parse_articles())
+    print(a)

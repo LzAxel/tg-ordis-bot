@@ -5,6 +5,7 @@ load_dotenv()
 
 TOKEN = os.getenv('TOKEN')
 DATABASE_URL = os.getenv('DATABASE_URL')
+ADMIN_ID = os.getenv('ADMIN_ID')
 
 RELIC_COMMANDS = ['lith', 'neo', 'meso', 'axi']
 

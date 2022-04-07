@@ -10,7 +10,7 @@ from pydantic import parse_raw_as
 import pydantic
 import re
 from classes import APIDump, Invasion, Sortie, WorldState, Relic, Article
-
+from utils import send_report
 
 async def parse_articles():
     logging.info("Parsing articles")
@@ -24,7 +24,6 @@ async def parse_articles():
         response = session.get(url)
 
     soup = BeautifulSoup(response.text, 'lxml')
-    
     try:
         parse_articles_list = soup.find(id='newsSection').find_all(class_='post')
 
@@ -35,15 +34,17 @@ async def parse_articles():
             read_more = parse_article.get("data-link")
             photo = 'https:' + parse_article.find(class_='image').find('img').get('src')
             articles_list.append(Article(title=title, description=description, 
-                                         date=date, photo=photo, url=read_more))
-
-    except Exception as ex:
+                                            date=date, photo=photo, url=read_more))
+    except AttributeError as ex:
         logging.exception(ex)
-        logging.error('Failed to parse. Check logs please.')
+        logging.exception("Failed to parse articles")
+        
         error_time = time.strftime('%d-%m-%Y_%S-%M-%H', time.gmtime())
-        with open(Path("logs", f"articles-{error_time}"), 'w+', encoding='UTF-8') as file:
+        with open(Path("src", f"articles-{error_time}.html"), "w", encoding="UTF-8") as file:
             file.write(response.text)
-
+        
+        await send_report(ex, "Failed to parse articles", open(Path("src", f"articles-{error_time}.html"), "rb"))
+            
     return articles_list
 
 

@@ -1,16 +1,17 @@
+import asyncio
+import logging
+from pathlib import Path
+
+import aioschedule
+import coloredlogs
+from aiogram import executor
+
 from bot import dp
 from config import ADMIN_ID
-from main import send_articles, send_alerts
+from handlers import register_handlers
+from main import send_alerts, send_articles
 from parse import get_new_articles, update_api_dump, update_relic_dump
 from utils import send_report
-import logging, coloredlogs
-
-from handlers import register_handlers
-from aiogram import executor
-import asyncio
-from pathlib import Path
-import aioschedule
-
 
 logging.basicConfig(level=logging.INFO)
 

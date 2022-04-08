@@ -7,6 +7,8 @@ TOKEN = os.getenv('TOKEN')
 DATABASE_URL = os.getenv('DATABASE_URL')
 ADMIN_ID = os.getenv('ADMIN_ID')
 
+TROLL_STICKER_ID = "CAACAgIAAxkBAAIUAWJQf3dcOKY8HikXvcP3g5fG_4oFAAK1SwAC6VUFGD-0J0GWs82RIwQ"
+
 RELIC_COMMANDS = ['lith', 'neo', 'meso', 'axi']
 
 OFFICIAL_URL = 'https://www.warframe.com/'

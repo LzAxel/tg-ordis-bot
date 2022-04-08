@@ -5,7 +5,7 @@ import traceback
 
 async def send_report(ex: Exception, message: str, file = None):
     error_time = time.strftime('%d-%m-%Y %S:%M:%H', time.gmtime())
-    await bot.send_message(ADMIN_ID, f"❗️ Unexpected Error ❗️\n\n{traceback.format_exc()}\nAdditional Message: {message}\n\nTime: {error_time}",
+    await bot.send_message(ADMIN_ID, f"❗️ Unexpected Error ❗️\n\n<pre>{traceback.format_exc()}</pre>\nAdditional Message: {message}\n\nTime: {error_time}",
                            parse_mode="HTML")
 
     if file:

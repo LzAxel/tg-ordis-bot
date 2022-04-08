@@ -30,7 +30,7 @@ async def send_articles():
 async def send_alerts():
     chat_list = db.get_users()
     api = await parse.read_api_dump()
-    alerts = [i for i in api.alerts if not i.notified]
+    alerts = [i for i in api.alerts if not i.notified and i.active]
     if alerts:
         for alert in alerts:
             for chat in chat_list:

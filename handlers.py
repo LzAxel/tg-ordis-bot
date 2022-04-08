@@ -1,5 +1,7 @@
+from multiprocessing.sharedctypes import Value
 from aiogram import types, filters, Dispatcher
 from aiogram.utils.markdown import bold
+from aiogram.utils import exceptions
 import logging
  
 import parse
@@ -61,9 +63,16 @@ async def send_invasions_info(msg: types.Message):
 
 
 async def send_relic_drop(msg: types.Message):
-    command = msg.text.title()
-    logging.info(f"Sending Relic Drop | Relic: {command} | User ID: {msg.from_user.id}")
-    relic = await parse.get_relic_drop(command)
+    logging.info(f"Sending Relic Drop | Relic: {msg.text.title()} | User ID: {msg.from_user.id}")
+
+    try:
+        tier, name = msg.text.title().split()
+
+    except ValueError:
+        await msg.answer("❌ *You must provide relic's Tier and Name*\nExample: Axi O5", reply_markup=kb.mainMenu)
+    
+    relic = await parse.get_relic_drop(tier, name)
+
     if relic:
         answer_message = f"🎱 *Relic:* {relic.tier} {relic.name}\n\n"
         for item in relic.rewards:
@@ -75,6 +84,7 @@ async def send_relic_drop(msg: types.Message):
 
 
 async def send_item_relic(msg: types.Message):
+    
     command = msg.text.title()
     logging.info(f"Sending Relics With Item | Item: {command} | User ID: {msg.from_user.id}")
     relics = await parse.get_relics_with_item(command)
@@ -93,10 +103,13 @@ async def send_item_relic(msg: types.Message):
             relic_message = f"{'🟨' if item.rarity == '6' else '⬜' if item.rarity == '17' else '🟫'}  *Relic:* {relic.tier} {relic.name}\n"
                 
             answer_message += item_message + relic_message
+        try:
+            await msg.answer(answer_message, reply_markup=kb.mainMenu)
 
-        await msg.answer(answer_message, reply_markup=kb.mainMenu)
+        except exceptions.MessageIsTooLong:
+            await msg.answer_sticker(config.TROLL_STICKER_ID)
     else:
-        await msg.answer("❌ *Relics With This Item Doesn't Exist*", reply_markup=kb.mainMenu)
+        await msg.answer("❌ *Relics with this item doesn't exist\.*\n Please check your request or try another\.", reply_markup=kb.mainMenu)
 
 
 def register_handlers(dp: Dispatcher): 

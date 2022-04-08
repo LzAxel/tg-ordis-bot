@@ -147,11 +147,8 @@ def get_invasions() -> list:
     return data
 
 
-async def get_relic_drop(req_relic: str) -> str:
+async def get_relic_drop(tier, name) -> str:
     logging.info(f"Parsing Relic Data")
-
-    tier = req_relic.split()[0]
-    name = req_relic.split()[1]
 
     data = pydantic.parse_file_as(list[Relic], Path("src", "relics_dump.json"))
     for relic in data:
